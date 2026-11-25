@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TeleChat — Real-Time Messaging</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: #0e1621; color: #f5f5f5; height: 100vh; display: flex; overflow: hidden; }
+
+    /* Left Sidebar */
+    .sidebar {
+      width: 320px; background: #17212b; border-right: 1px solid #0b1118;
+      display: flex; flex-direction: column; flex-shrink: 0;
+    }
+    .side-header {
+      padding: 14px 16px; display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid #0e1621;
+    }
+    .app-title { font-size: 18px; font-weight: 800; color: #5eb5f7; }
+    .search-box { padding: 10px 14px; }
+    .search-box input {
+      width: 100%; padding: 9px 14px; border-radius: 20px; border: none;
+      background: #242f3d; color: #fff; font-size: 13px; outline: none;
+    }
+    .room-list { flex: 1; overflow-y: auto; }
+    .room-item {
+      display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+      cursor: pointer; transition: 0.15s; border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .room-item:hover { background: #202b36; }
+    .room-item.active { background: #2b5278; }
+    .avatar {
+      width: 42px; height: 42px; border-radius: 50%; background: #3390ec;
+      display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; flex-shrink: 0;
+    }
+    .room-name { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    .room-sub { font-size: 12px; color: #8c9aa8; margin-top: 2px; }
+    .badge-priv { font-size: 10px; background: #242f3d; color: #64b5f6; padding: 2px 6px; border-radius: 6px; }
+
+    .user-footer {
+      padding: 12px 16px; background: #131c26; border-top: 1px solid #0e1621;
+      display: flex; justify-content: space-between; align-items: center; font-size: 13px;
+    }
+
+    /* Right Chat Area */
+    .chat-area {
+      flex: 1; display: flex; flex-direction: column; background: #0e1621; position: relative;
+    }
+    .chat-header {
+      padding: 12px 18px; background: #17212b; border-bottom: 1px solid #0b1118;
+      display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    }
+    .messages-box {
+      flex: 1; padding: 18px 22px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+    }
+    .msg {
+      max-width: 74%; padding: 9px 13px; border-radius: 12px; font-size: 14px; line-height: 1.4;
+      word-wrap: break-word;
+    }
+    .msg.in { align-self: flex-start; background: #182533; border-bottom-left-radius: 3px; }
+    .msg.out { align-self: flex-end; background: #2b5278; border-bottom-right-radius: 3px; }
+    .msg-sender { font-size: 12px; font-weight: 700; color: #64b5f6; margin-bottom: 4px; }
+    .msg-media { max-width: 100%; max-height: 260px; border-radius: 8px; margin: 4px 0; display: block; }
+    .msg-time { font-size: 10px; color: #8ea4b8; text-align: right; margin-top: 4px; }
+
+    /* Input Bar */
+    .input-bar {
+      padding: 11px 16px; background: #17212b; display: flex; gap: 8px; align-items: center;
+    }
+    .input-bar input[type="text"] {
+      flex: 1; padding: 11px 15px; border-radius: 22px; border: none;
+      background: #242f3d; color: #fff; font-size: 14px; outline: none;
+    }
+    button, .attach-btn {
+      padding: 9px 14px; border-radius: 18px; border: none; font-weight: 600;
+      cursor: pointer; font-size: 13px; transition: 0.15s; display: inline-flex; align-items: center; justify-content: center;
+    }
+    .btn-blue { background: #3390ec; color: #fff; }
+    .btn-blue:hover { background: #267cd1; }
+    .btn-dark, .attach-btn { background: #242f3d; color: #cbd5e1; }
+    .attach-btn:hover { background: #2f3d4f; }
+
+    @media (max-width: 720px) {
+      .sidebar { width: 100%; }
+      .chat-area { display: none; width: 100%; }
+      body.chat-open .sidebar { display: none; }
+      body.chat-open .chat-area { display: flex; }
+    }
+
+    /* Modals */
+    .modal {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.78);
+      justify-content: center; align-items: center; padding: 16px; z-index: 50;
+    }
+    .modal.open { display: flex; }
+    .modal-box {
+      background: #17212b; border: 1px solid #2b5278; padding: 22px;
+      border-radius: 14px; width: 100%; max-width: 390px;
+    }
+    .modal-box h3 { margin-bottom: 12px; color: #64b5f6; }
+    .modal-box input, .modal-box select {
+      width: 100%; padding: 10px; margin: 7px 0; border-radius: 8px;
+      border: 1px solid #242f3d; background: #0e1621; color: #fff;
+    }
+    .status { font-size: 12px; color: #5eb5f7; margin-top: 8px; word-break: break-word; }
+  </style>
+</head>
+<body>
+
+  <!-- Left Sidebar -->
+  <aside class="sidebar">
+    <div class="side-header">
+      <div class="app-title">✈ TeleChat</div>
+      <button class="btn-blue" onclick="openModal('groupModal')">+ Group</button>
+    </div>
+
+    <div class="search-box">
+      <input type="text" id="roomSearch" placeholder="Search groups..." oninput="renderRooms()">
+    </div>
+
+    <div class="room-list" id="roomList"></div>
+
+    <div class="user-footer">
+      <span id="userStatus">Guest Mode</span>
+      <div>
+        <button id="loginBtn" class="btn-blue" onclick="openModal('authModal')">Login</button>
+        <button id="logoutBtn" class="btn-dark" style="display:none;" onclick="logoutUser()">Logout</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Right Chat Area -->
+  <main class="chat-area">
+    <div class="chat-header">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <button class="btn-dark" onclick="document.body.classList.remove('chat-open')">←</button>
+        <div>
+          <div id="activeRoomTitle" style="font-weight:700; font-size:16px;">General Public Chat</div>
+          <div id="activeRoomDesc" style="font-size:12px; color:#8c9aa8;">Sabke liye open group</div>
+        </div>
+      </div>
+      <button id="addMemberBtn" class="btn-dark" style="display:none;" onclick="openModal('memberModal')">+ Add Member</button>
+    </div>
+
+    <div class="messages-box" id="messagesBox">
+      <p style="color:#8c9aa8; text-align:center; margin-top:20px;">Messages load ho rahe hain...</p>
+    </div>
+
+    <div id="uploadBanner" style="display:none; padding:6px 18px; background:#1e2c3a; font-size:12px; color:#64b5f6;">
+      Gallery se photo/video upload ho raha hai...
+    </div>
+
+    <form class="input-bar" id="chatInputBar" onsubmit="sendMessage(event)">
+      <label class="attach-btn" title="Gallery se Photo/Video bhejein">
+        📎
+        <input type="file" id="mediaInput" accept="image/*,video/*" style="display:none;" onchange="sendMediaFile()">
+      </label>
+      <input type="text" id="msgInput" placeholder="Write a message..." autocomplete="off">
+      <button type="submit" class="btn-blue">Send ➤</button>
+    </form>
+  </main>
+
+  <!-- Login Modal -->
+  <div class="modal" id="authModal">
+    <div class="modal-box">
+      <h3>Profile Verify Karein</h3>
+      <input type="text" id="authName" placeholder="Apna Display Name">
+      <input type="email" id="authEmail" placeholder="Apna Email">
+      <button class="btn-blue" style="width:100%; margin-top:8px;" onclick="sendOTP()">Verification Link Bhejein</button>
+      <button class="btn-dark" style="width:100%; margin-top:6px;" onclick="closeModal('authModal')">Close</button>
+      <p class="status" id="authStatus"></p>
+    </div>
+  </div>
+
+  <!-- Create Group Modal -->
+  <div class="modal" id="groupModal">
+    <div class="modal-box">
+      <h3>Naya Group Banayein</h3>
+      <input type="text" id="newGroupName" placeholder="Group ka Naam">
+      <input type="text" id="newGroupDesc" placeholder="Short Description">
+      <select id="newGroupType">
+        <option value="public">Public Group (Koi bhi join kare)</option>
+        <option value="private">Private Group (Sirf added members)</option>
+      </select>
+      <button class="btn-blue" style="width:100%; margin-top:8px;" onclick="createGroup()">Create Group</button>
+      <button class="btn-dark" style="width:100%; margin-top:6px;" onclick="closeModal('groupModal')">Cancel</button>
+      <p class="status" id="groupStatus"></p>
+    </div>
+  </div>
+
+  <!-- Add Member Modal -->
+  <div class="modal" id="memberModal">
+    <div class="modal-box">
+      <h3>Group Mein Member Add Karein</h3>
+      <p style="font-size:12px; color:#8c9aa8; margin-bottom:6px;">Member ka email likhein (unhe is email se login karna hoga):</p>
+      <input type="email" id="memberEmailInput" placeholder="friend@gmail.com">
+      <button class="btn-blue" style="width:100%; margin-top:8px;" onclick="addMemberToRoom()">Add Member</button>
+      <button class="btn-dark" style="width:100%; margin-top:6px;" onclick="closeModal('memberModal')">Close</button>
+      <p class="status" id="memberStatus"></p>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import {
+      getAuth, sendSignInLinkToEmail, isSignInWithEmailLink,
+      signInWithEmailLink, onAuthStateChanged, signOut
+    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+    import {
+      getFirestore, collection, addDoc, doc, setDoc, getDoc, updateDoc,
+      arrayUnion, query, orderBy, limit, onSnapshot
+    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    // Aapka Cloudinary Config (Connected)
+    const CLOUDINARY_CLOUD_NAME = "kgnillqy";
+    const CLOUDINARY_UPLOAD_PRESET = "mytube_preset";
+
+    // Aapka Firebase Config (Connected)
+    const firebaseConfig = {
+      apiKey: "AIzaSyDbssJ37MopwWHijjihNYvyQyKcGd9nEW4",
+      authDomain: "website-3370c.firebaseapp.com",
+      projectId: "website-3370c",
+      storageBucket: "website-3370c.firebasestorage.app",
+      messagingSenderId: "130772213121",
+      appId: "1:130772213121:web:2c3bd8fd9be8dd684a1c80",
+      measurementId: "G-RN1GLP7RC0"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    let currentUser = null;
+    let rooms = [{ id: "general", name: "General Public Chat", desc: "Sabke liye open group", isPrivate: false }];
+    let activeRoomId = "general";
+    let unsubscribeChat = null;
+
+    window.openModal = (id) => document.getElementById(id).classList.add("open");
+    window.closeModal = (id) => document.getElementById(id).classList.remove("open");
+
+    // 1. Auth
+    window.sendOTP = async () => {
+      const name = document.getElementById("authName").value.trim();
+      const email = document.getElementById("authEmail").value.trim().toLowerCase();
+      const status = document.getElementById("authStatus");
+      if (!name || !email) return (status.innerText = "Naam aur email dono bharein.");
+
+      try {
+        await sendSignInLinkToEmail(auth, email, {
+          url: window.location.origin + window.location.pathname,
+          handleCodeInApp: true
+        });
+        localStorage.setItem("pendingEmail", email);
+        localStorage.setItem("pendingName", name);
+        status.innerText = "Verification link email par bhej diya gaya hai!";
+      } catch (e) {
+        status.innerText = "Error: " + e.message;
+      }
+    };
+
+    if (isSignInWithEmailLink(auth, window.location.href)) {
+      const email = (localStorage.getItem("pendingEmail") || window.prompt("Confirm karne ke liye email likhein:") || "").trim().toLowerCase();
+      const name = localStorage.getItem("pendingName") || "User";
+      if (email) {
+        signInWithEmailLink(auth, email, window.location.href).then(async (res) => {
+          await setDoc(doc(db, "users", res.user.uid), { name, email, verified: true }, { merge: true });
+          localStorage.removeItem("pendingEmail");
+          localStorage.removeItem("pendingName");
+          window.history.replaceState({}, document.title, window.location.pathname);
+        });
+      }
+    }
+
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        const snap = await getDoc(doc(db, "users", user.uid));
+        const profile = snap.exists() ? snap.data() : { name: user.email.split("@")[0] };
+        currentUser = { uid: user.uid, name: profile.name, email: user.email.toLowerCase() };
+        document.getElementById("userStatus").innerText = "● " + currentUser.name;
+        document.getElementById("loginBtn").style.display = "none";
+        document.getElementById("logoutBtn").style.display = "inline-block";
+      } else {
+        currentUser = null;
+        document.getElementById("userStatus").innerText = "Guest Mode";
+        document.getElementById("loginBtn").style.display = "inline-block";
+        document.getElementById("logoutBtn").style.display = "none";
+      }
+      selectRoom(activeRoomId);
+    });
+
+    window.logoutUser = () => signOut(auth);
+
+    // 2. Real-time Groups Listener
+    onSnapshot(query(collection(db, "tg_rooms"), orderBy("createdAt", "asc")), (snap) => {
+      const customRooms = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      rooms = [{ id: "general", name: "General Public Chat", desc: "Sabke liye open group", isPrivate: false }, ...customRooms];
+      renderRooms();
+    });
+
+    window.createGroup = async () => {
+      const name = document.getElementById("newGroupName").value.trim();
+      const desc = document.getElementById("newGroupDesc").value.trim() || "Group Chat";
+      const isPrivate = document.getElementById("newGroupType").value === "private";
+      const status = document.getElementById("groupStatus");
+
+      if (!name) return (status.innerText = "Group ka naam likhein.");
+      if (isPrivate && !currentUser) return (status.innerText = "Private group banane ke liye pehle Login karein.");
+
+      const docRef = await addDoc(collection(db, "tg_rooms"), {
+        name,
+        desc,
+        isPrivate,
+        ownerEmail: currentUser?.email || "",
+        members: currentUser ? [currentUser.email] : [],
+        createdAt: Date.now()
+      });
+
+      document.getElementById("newGroupName").value = "";
+      document.getElementById("newGroupDesc").value = "";
+      status.innerText = "";
+      closeModal("groupModal");
+      selectRoom(docRef.id);
+    };
+
+    window.addMemberToRoom = async () => {
+      const email = document.getElementById("memberEmailInput").value.trim().toLowerCase();
+      const status = document.getElementById("memberStatus");
+      if (!email) return (status.innerText = "Valid email likhein.");
+
+      try {
+        await updateDoc(doc(db, "tg_rooms", activeRoomId), {
+          members: arrayUnion(email)
+        });
+        document.getElementById("memberEmailInput").value = "";
+        status.innerText = `${email} ko group mein add kar diya gaya hai!`;
+      } catch (e) {
+        status.innerText = "Error: " + e.message;
+      }
+    };
+
+    window.renderRooms = () => {
+      const search = document.getElementById("roomSearch").value.toLowerCase();
+      const listEl = document.getElementById("roomList");
+      const filtered = rooms.filter(r => r.name.toLowerCase().includes(search));
+
+      listEl.innerHTML = filtered.map(r => `
+        <div class="room-item ${r.id === activeRoomId ? "active" : ""}" onclick="selectRoom('${r.id}')">
+          <div class="avatar">${r.name[0].toUpperCase()}</div>
+          <div>
+            <div class="room-name">
+              ${r.name}
+              ${r.isPrivate ? `<span class="badge-priv">🔒 Private</span>` : ""}
+            </div>
+            <div class="room-sub">${r.desc}</div>
+          </div>
+        </div>
+      `).join("");
+    };
+
+    window.selectRoom = (id) => {
+      activeRoomId = id;
+      const room = rooms.find(r => r.id === id) || rooms[0];
+      document.getElementById("activeRoomTitle").innerText = room.name;
+      document.getElementById("activeRoomDesc").innerText = room.desc;
+      document.body.classList.add("chat-open");
+
+      const addBtn = document.getElementById("addMemberBtn");
+      const inputBar = document.getElementById("chatInputBar");
+      const box = document.getElementById("messagesBox");
+
+      addBtn.style.display = room.isPrivate ? "inline-flex" : "none";
+
+      // Check Private Group Access
+      if (room.isPrivate) {
+        const allowed = currentUser && Array.isArray(room.members) && room.members.includes(currentUser.email);
+        if (!allowed) {
+          if (unsubscribeChat) unsubscribeChat();
+          inputBar.style.display = "none";
+          box.innerHTML = `<p style="color:#f87171; text-align:center; margin-top:40px;">🔒 Yeh Private Group hai. Join karne ke liye apna email admin se add karwayein aur usi email se Login karein.</p>`;
+          renderRooms();
+          return;
+        }
+      }
+
+      inputBar.style.display = "flex";
+      renderRooms();
+      listenMessages(id);
+    };
+
+    // 3. Real-Time Chat Messages
+    function listenMessages(roomId) {
+      if (unsubscribeChat) unsubscribeChat();
+      const box = document.getElementById("messagesBox");
+      const q = query(collection(db, "tg_rooms", roomId, "messages"), orderBy("createdAt", "asc"), limit(100));
+
+      unsubscribeChat = onSnapshot(q, (snap) => {
+        if (snap.empty) {
+          box.innerHTML = `<p style="color:#8c9aa8; text-align:center; margin-top:20px;">Is group mein abhi koi message nahi hai. Pehla message bhejein!</p>`;
+          return;
+        }
+
+        box.innerHTML = snap.docs.map(d => {
+          const m = d.data();
+          const isMe = currentUser && m.senderUid === currentUser.uid;
+          const time = new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+          let mediaHtml = "";
+          if (m.mediaUrl) {
+            mediaHtml = m.mediaType === "video"
+              ? `<video class="msg-media" src="${m.mediaUrl}" controls></video>`
+              : `<img class="msg-media" src="${m.mediaUrl}" alt="media">`;
+          }
+
+          return `
+            <div class="msg ${isMe ? "out" : "in"}">
+              ${!isMe ? `<div class="msg-sender">${m.senderName}</div>` : ""}
+              ${mediaHtml}
+              ${m.text ? `<div>${m.text}</div>` : ""}
+              <div class="msg-time">${time}</div>
+            </div>
+          `;
+        }).join("");
+
+        box.scrollTop = box.scrollHeight;
+      });
+    }
+
+    // 4. Send Text Message
+    window.sendMessage = async (e) => {
+      e.preventDefault();
+      const input = document.getElementById("msgInput");
+      const text = input.value.trim();
+      if (!text) return;
+
+      input.value = "";
+      await addDoc(collection(db, "tg_rooms", activeRoomId, "messages"), {
+        text,
+        senderName: currentUser?.name || "Guest",
+        senderUid: currentUser?.uid || "guest",
+        createdAt: Date.now()
+      });
+    };
+
+    // 5. Send Photo / Video from Gallery via Cloudinary
+    window.sendMediaFile = async () => {
+      const fileInput = document.getElementById("mediaInput");
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      const banner = document.getElementById("uploadBanner");
+      banner.style.display = "block";
+
+      const isVideo = file.type.startsWith("video/");
+      const resourceType = isVideo ? "video" : "image";
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+
+      try {
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`, {
+          method: "POST",
+          body: formData
+        });
+        const data = await res.json();
+        if (!data.secure_url) throw new Error(data.error?.message || "Upload failed");
+
+        await addDoc(collection(db, "tg_rooms", activeRoomId, "messages"), {
+          text: "",
+          mediaUrl: data.secure_url,
+          mediaType: resourceType,
+          senderName: currentUser?.name || "Guest",
+          senderUid: currentUser?.uid || "guest",
+          createdAt: Date.now()
+        });
+      } catch (err) {
+        alert("Media upload error: " + err.message);
+      } finally {
+        banner.style.display = "none";
+        fileInput.value = "";
+      }
+    };
+
+    selectRoom("general");
+  </script>
+</body>
+</html>
